@@ -8,6 +8,7 @@ Davy's Rudimentary Descriptor Extractor (DaRuDE) is a Python script that extract
 1. Optimise geometries
 2. Check geometry optimisation convergence
 3. Visualise molecular orbitals
+4. Extract descriptors for more than one Orca output file
 
 ## Orca Input Prerequisites
 Orca input files must contain the following code block to calculate the raw data that DaRuDE extracts
@@ -26,4 +27,5 @@ end
 * numpy
 
 ## To do
-Make an install script for a Conda environment
+- Make an install script for a Conda environment
+
