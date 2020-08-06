@@ -9,8 +9,9 @@ import cclib
 import re
 import pandas as pd
 import numpy as np
+import sys
 
-filename = "agonist1_orca_output.out"
+filename = sys.argv[1]
 
 data = cclib.io.ccread(filename)
 print("There are %i atoms and %i MOs" % (data.natom, data.nmo))
