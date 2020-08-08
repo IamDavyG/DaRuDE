@@ -22,7 +22,10 @@ end
 ```
 
 ## Dependencies
+### install requirements
+`pip install -r requirements.txt`
 * cclib
+* regex
 * pandas
 * numpy
 
