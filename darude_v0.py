@@ -5,85 +5,141 @@ Created on Wed Aug  5 19:25:44 2020
 @author: Davy
 """
 
+import time
+import argparse
 import cclib
-import re
+import regex as re
 import pandas as pd
 import numpy as np
 import sys
+import os
 
-filename = sys.argv[1]
+def run(files, patExt):
+    try:
+        ext_pattern = re.compile(r'{}'.format(patExt))
+    except:
+        print('invalid regex pattern for file extension')
+        exit(1)
 
-data = cclib.io.ccread(filename)
-print("There are %i atoms and %i MOs" % (data.natom, data.nmo))
+    fs = []
+    for i in files:
+        if os.path.isfile(i):
+            fs.append(i)
+        else:
+            for (dirpath, dirnames, filenames) in os.walk(i):
+                fs.extend(['{}/{}'.format(dirpath.strip("/"), j) for j in list(filter(ext_pattern.search, filenames))])
+                break
 
-HOMO_energy = data.moenergies[0][data.homos[0]]*0.036749305
-HOMO1_energy = data.moenergies[0][data.homos[0]-1]*0.036749305
-HOMO2_energy = data.moenergies[0][data.homos[0]-2]*0.036749305
+    if not fs:
+        print('no valid file matches found')
+        exit(1)
 
-LUMO_energy = data.moenergies[0][data.homos[0]+1]*0.036749305
-LUMO1_energy = data.moenergies[0][data.homos[0]+2]*0.036749305
-LUMO2_energy = data.moenergies[0][data.homos[0]+3]*0.036749305
+    df = pd.DataFrame(columns=[
+                            "SPE", 
+                            "HOMO_energy", 
+                            "HOMO1_energy", 
+                            "HOMO2_energy", 
+                            "LUMO_energy", 
+                            "LUMO1_energy", 
+                            "LUMO2_energy",
+                            "dipole", 
+                            "quadrupole_XX", 
+                            "quadrupole_YY", 
+                            "quadrupole_ZZ", 
+                            "quadrupole_XY", 
+                            "quadrupole_XZ", 
+                            "quadrupole_YZ", 
+                            "isoquad", 
+                            "hardness", 
+                            "electronegativity", 
+                            "electrophilicity", 
+                            "electron_donating_power", 
+                            "electron_accepting_power", 
+                            "net_electrophilicity"])
+    for ff in fs:
+        data = cclib.io.ccread(ff)
 
-hardness = LUMO_energy - HOMO_energy
+        print("There are %i atoms and %i MOs" % (data.natom, data.nmo))
 
-electronegativity = (HOMO_energy+LUMO_energy)/2
+        HOMO_energy = data.moenergies[0][data.homos[0]]*0.036749305
+        HOMO1_energy = data.moenergies[0][data.homos[0]-1]*0.036749305
+        HOMO2_energy = data.moenergies[0][data.homos[0]-2]*0.036749305
 
-electrophilicity = ((HOMO_energy+LUMO_energy)**2)/((LUMO_energy-HOMO_energy)*4)
+        LUMO_energy = data.moenergies[0][data.homos[0]+1]*0.036749305
+        LUMO1_energy = data.moenergies[0][data.homos[0]+2]*0.036749305
+        LUMO2_energy = data.moenergies[0][data.homos[0]+3]*0.036749305
 
-electron_donating_power = (3*(HOMO_energy)+(LUMO_energy))**2/(16*(hardness))
+        hardness = LUMO_energy - HOMO_energy
+        electronegativity = (HOMO_energy+LUMO_energy)/2
+        electrophilicity = ((HOMO_energy+LUMO_energy)**2)/((LUMO_energy-HOMO_energy)*4)
+        electron_donating_power = (3*(HOMO_energy)+(LUMO_energy))**2/(16*(hardness))
+        electron_accepting_power = ((HOMO_energy)+(3*(LUMO_energy)))**2/(16*(hardness))
+        net_electrophilicity = electron_donating_power + electron_accepting_power
 
-electron_accepting_power = ((HOMO_energy)+(3*(LUMO_energy)))**2/(16*(hardness))
+        patSPE = "(?<=FINAL SINGLE POINT ENERGY.+)[+-]?\d+\.?\d+"
+        patMag = "(?<=Magnitude.+)[+-]?\d+\.?\d+"
+        patIsoQuad = "(?<=Isotropic quadrupole.+)[+-]?\d+\.?\d+"
+        patQuad = "(?<=TOT.+)([+-]?\d+\.?\d+)(?=.+\(a\.u\.\))"
 
-net_electrophilicity = electron_donating_power + electron_accepting_power
+        SPE = []
+        MAG = []
+        ISO = []
+        QUA = []
+        with open(ff, 'r') as f:
+            for l in f:
+                spe = re.search(r'{}'.format(patSPE), l)
+                mag = re.search(r'{}'.format(patMag), l)
+                iso = re.search(r'{}'.format(patIsoQuad), l)
+                qua = re.findall(r'{}'.format(patQuad), l)
 
-SPE_pattern = "FINAL SINGLE POINT ENERGY"
-file = open(filename, "r")
-for line in file:
-    if re.search(SPE_pattern, line):
-        found_SPE = line        
-formatted_SPE = re.findall(r"[-+]?\d*\.\d+|\d+",found_SPE)
-float_SPE = [float(item) for item in formatted_SPE]
-print(float_SPE)
+                if spe is not None:
+                    SPE.append(float(spe.group()))
+                if mag is not None:
+                    MAG.append(float(mag.group()))
+                if iso is not None:
+                    ISO.append(float(iso.group()))
+                if qua:
+                    QUA.append([float(i) for i in qua])
 
-dipole_pattern = "Magnitude"
-file = open(filename, "r")
-for line2 in file:
-    if re.search(dipole_pattern, line2):
-        found_dipole = line2        
-formatted_dipole = re.findall(r"[-+]?\d*\.\d+|\d+",found_dipole)
-float_dipole = [float(item) for item in formatted_dipole]
-print(float_dipole)
+        float_SPE = SPE[-1]
+        float_dipole = MAG[-1]
+        float_isoquad = ISO[-1]
+        float_quadrupole= QUA[-1]
 
-isoquad_pattern = "Isotropic quadrupole"
-file = open(filename, "r")
-for line3 in file:
-    if re.search(isoquad_pattern, line3):
-        found_isoquad = line3        
-formatted_isoquad = re.findall(r"[-+]?\d*\.\d+|\d+",found_isoquad)
-float_isoquad = [float(item) for item in formatted_isoquad]
-print(float_isoquad)
+        df = df.append({
+            "SPE": SPE[-1],
+            "HOMO_energy": HOMO_energy,
+            "HOMO1_energy": HOMO1_energy,
+            "HOMO2_energy": HOMO2_energy,
+            "LUMO_energy": LUMO_energy,
+            "LUMO1_energy": LUMO1_energy,
+            "LUMO2_energy": LUMO2_energy,
+            "dipole": MAG[-1],
+            "quadrupole_XX": QUA[-1][0],
+            "quadrupole_YY": QUA[-1][1],
+            "quadrupole_ZZ": QUA[-1][2],
+            "quadrupole_XY": QUA[-1][3],
+            "quadrupole_XZ": QUA[-1][4],
+            "quadrupole_YZ": QUA[-1][5],
+            "isoquad": ISO[-1],
+            "hardness": hardness, 
+            "electronegativity": electronegativity,
+            "electrophilicity": electrophilicity,
+            "electron_donating_power": electron_donating_power,
+            "electron_accepting_power": electron_accepting_power,
+            "net_electrophilicity": net_electrophilicity
+            }, ignore_index=True)
 
-rawquadrupole_pattern = 'TOT       '
-file = open(filename, "r")
-for line4 in file:
-    if re.findall(rawquadrupole_pattern, line4):
-        found_rawquadrupole = line4        
-formatted_quadrupole =re.findall(r"[-+]?\d*\.\d+|\d+",found_rawquadrupole)
-float_quadrupole = [float(item) for item in formatted_quadrupole]
-print(float_quadrupole)
+    return df
 
-#quadrupole order: XX YY ZZ XY XZ YZ
+if __name__ == "__main__":
+    n = str(int(time.time()))
+    ofn = 'darude-{}.csv'.format(n)
+    parser = argparse.ArgumentParser(prog='darude')
+    parser.add_argument('-p', nargs='?', default='(?<!(_atom\d+?))\.out$', const='(?<!(_atom\d+?))\.out$', help='regex pattern for desired file extension')
+    parser.add_argument('-o', nargs='?', default=ofn, const=ofn, help='specify the output filename default is \'%(prog)s.csv\'')
+    parser.add_argument('file', nargs='+', help='file(s) or directories for %(prog)s to process')
+    args = vars(parser.parse_args())
+    ddf = run(args['file'], args['p'])
+    ddf.to_csv('{}'.format(args['o']), index=False)
 
-
-SPE = np.asarray(float_SPE)
-dipole = np.asarray(float_dipole)
-isoquad = np.asarray(float_isoquad)
-quadrupole = np.asarray(float_quadrupole)
-
-np_catlist = np.concatenate((SPE,HOMO_energy, HOMO1_energy, HOMO2_energy, LUMO_energy, LUMO1_energy, LUMO2_energy,dipole, quadrupole, isoquad, hardness, electronegativity, electrophilicity, electron_donating_power, electron_accepting_power, net_electrophilicity),axis=None)
-
-df = pd.DataFrame(np_catlist.reshape(-1, len(np_catlist)),columns=["SPE","HOMO_energy", "HOMO1_energy", "HOMO2_energy", "LUMO_energy", "LUMO1_energy", "LUMO2_energy","dipole", "quadrupole_XX", "quadrupole_YY", "quadrupole_ZZ", "quadrupole_XY", "quadrupole_XZ", \
-                  "quadrupole_YZ", "isoquad", "hardness", "electronegativity", "electrophilicity", "electron_donating_power", "electron_accepting_power", "net_electrophilicity"])
-print(df)
-
-df.to_csv(r'DaRuDE_v0_Output.csv', index=False)
